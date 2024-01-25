@@ -181,3 +181,125 @@ BEGIN
         DBMS_OUTPUT.PUT_LINE('Nie można przydzielić pracownika w aktualnym stanie naprawy.');
     END IF;
 END AktualizujStatusNaprawy;
+
+-- Procedura 6 * dodatkowa:
+-- Procedura ma:
+-- wypisać średnią wartość wszystkich faktur
+-- wypisać średnią wartość wszystkich faktur względem Sprzedawca_ID
+-- zwiększyć o 5% wartość wszystkich faktur Sprzedawcy którego średnia jest największa
+-- zwiększyć o 10% wartość wszystkich faktur Sprzedawcy którego średnia jest najmniejsza.
+-- wypisać dla których Sprzedawców faktury zostały podniesione i zmniejszone.
+-- zwiększyć o 20% każdą fakturę która sumarycznie została wyceniona na mniej niż 1000.
+-- wypisać każdą fakturę która została zwiększona o 20%.
+CREATE OR REPLACE PROCEDURE ModyfikujFaktury AS
+    v_SredniaMin NUMBER;
+    v_PodniesionoSprzedawcaID NUMBER;
+    v_ZmniejszonoSprzedawcaID NUMBER;
+    v_SprzedawcaID NUMBER;
+    v_Srednia NUMBER;
+    v_MinimalnaSuma NUMBER := 1000;
+
+BEGIN
+    SELECT AVG(Cena) INTO v_SredniaMin FROM Faktura;
+
+    DBMS_OUTPUT.PUT_LINE('Średnia wartość wszystkich faktur: ' || v_SredniaMin);
+
+    FOR sprzedawca_rec IN (SELECT DISTINCT Sprzedawca_ID FROM Faktura) LOOP
+        v_SprzedawcaID := sprzedawca_rec.Sprzedawca_ID;
+
+        SELECT AVG(Cena) INTO v_Srednia
+        FROM Faktura
+        WHERE Sprzedawca_ID = v_SprzedawcaID;
+
+        DBMS_OUTPUT.PUT_LINE('Średnia wartość faktur dla Sprzedawcy ' || v_SprzedawcaID || ': ' || v_Srednia);
+    END LOOP;
+
+    SELECT Sprzedawca_ID INTO v_PodniesionoSprzedawcaID
+    FROM (SELECT Sprzedawca_ID
+          FROM Faktura
+          GROUP BY Sprzedawca_ID
+          ORDER BY AVG(Cena) DESC
+          FETCH FIRST 1 ROWS ONLY);
+
+    UPDATE Faktura
+    SET Cena = Cena * 1.05
+    WHERE Sprzedawca_ID = v_PodniesionoSprzedawcaID;
+
+    DBMS_OUTPUT.PUT_LINE('Zwiększono wartość faktur dla Sprzedawcy ' || v_PodniesionoSprzedawcaID || ' o 5%');
+
+    SELECT Sprzedawca_ID INTO v_ZmniejszonoSprzedawcaID
+    FROM (SELECT Sprzedawca_ID
+          FROM Faktura
+          GROUP BY Sprzedawca_ID
+          ORDER BY AVG(Cena)
+          FETCH FIRST 1 ROWS ONLY);
+
+    UPDATE Faktura
+    SET Cena = Cena * 1.10
+    WHERE Sprzedawca_ID = v_ZmniejszonoSprzedawcaID;
+
+    DBMS_OUTPUT.PUT_LINE('Zwiększono wartość faktur dla Sprzedawcy ' || v_ZmniejszonoSprzedawcaID || ' o 10%');
+
+    FOR Faktura IN (SELECT ID_Faktury FROM Faktura WHERE Cena <= v_MinimalnaSuma) LOOP
+        DBMS_OUTPUT.PUT_LINE('ID_Faktury zwiększone o 20%: ' || Faktura.ID_Faktury);
+    END LOOP;
+
+    UPDATE Faktura
+    SET Cena = Cena * 1.20
+    WHERE Sprzedawca_ID IS NOT NULL AND Cena <= v_MinimalnaSuma;
+
+END ModyfikujFaktury;
+
+CALL ModyfikujFaktury();
+
+SELECT AVG(Cena) FROM Faktura;
+
+SELECT Sprzedawca_ID, AVG(Cena) AS Srednia FROM Faktura
+GROUP BY Sprzedawca_ID;
+
+SELECT ID_Faktury, Cena, Sprzedawca_ID FROM Faktura
+WHERE Cena <=1000;
+
+SELECT * FROM Faktura;
+
+-- Procedura 7 * dodatkowa:
+-- przejrzyj wszystkich sprzedawców z tabeli sprzedawca
+-- wypisz średnią każdego z nich
+-- skasuj każdego z nich (i ich faktury), którzy mają średnią poniżej 5000.
+DECLARE
+    v_SprzedawcaID Sprzedawca.ID%TYPE;
+    v_Srednia DECIMAL(18, 2);
+
+    CURSOR sprzedawca_cursor IS
+        SELECT ID, Sprzedawca
+        FROM Sprzedawca;
+
+BEGIN
+    FOR sprzedawca_rec IN sprzedawca_cursor LOOP
+        v_SprzedawcaID := sprzedawca_rec.ID;
+
+        SELECT AVG(Cena) INTO v_Srednia
+        FROM Faktura
+        WHERE Sprzedawca_ID = v_SprzedawcaID;
+
+        DBMS_OUTPUT.PUT_LINE('Średnia wartość faktur dla Sprzedawcy ' || v_SprzedawcaID || ' '|| v_Srednia);
+
+        IF v_Srednia < 5000 THEN
+            DELETE FROM Faktura WHERE Sprzedawca_ID = v_SprzedawcaID;
+            DELETE FROM Sprzedawca WHERE ID = v_SprzedawcaID;
+
+            DBMS_OUTPUT.PUT_LINE('Usunięto Sprzedawcę ' || v_SprzedawcaID || ' ' || ' i jego faktury ze względu na niską średnią.');
+        END IF;
+    END LOOP;
+END;
+
+
+SELECT Sprzedawca_ID, AVG(Cena) AS Srednia FROM Faktura
+GROUP BY Sprzedawca_ID;
+
+INSERT INTO Sprzedawca VALUES (4, 4);
+INSERT INTO Faktura VALUES (200, 1, 'do usuniecia', 100, 4);
+
+SELECT * FROM Sprzedawca;
+
+SELECT * FROM Faktura;
