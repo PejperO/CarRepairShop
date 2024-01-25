@@ -106,3 +106,154 @@ SELECT * FROM Faktura
 
 --Wykonaj
 EXEC ZwiekszCeneFaktur 7;
+
+-- Procedura 6 * dodatkowa:
+-- Procedura ma:
+-- wypisać średnią wartość wszystkich faktur
+-- wypisać średnią wartość wszystkich faktur względem Sprzedawca_ID
+-- zwiększyć o 5% wartość wszystkich faktur Sprzedawcy którego średnia jest największa
+-- zwiększyć o 10% wartość wszystkich faktur Sprzedawcy którego średnia jest najmniejsza.
+-- wypisać dla których Sprzedawców faktury zostały podniesione i zmniejszone.
+-- zwiększyć o 20% każdą fakturę która sumarycznie została wyceniona na mniej niż 1000.
+-- wypisać każdą fakturę która została zwiększona o 20%.
+CREATE PROCEDURE ModyfikujFaktury AS
+BEGIN
+    DECLARE @v_SredniaMin DECIMAL(18, 2);
+    DECLARE @v_PodniesionoSprzedawcaID INT;
+    DECLARE @v_ZmniejszonoSprzedawcaID INT;
+    DECLARE @v_SprzedawcaID INT;
+    DECLARE @v_Srednia DECIMAL(18, 2);
+    DECLARE @v_MinimalnaSuma DECIMAL(18, 2) = 1000;
+    DECLARE @v_PodniesionaFakturaID INT;
+
+    SELECT @v_SredniaMin = AVG(Cena)
+    FROM Faktura;
+
+    PRINT 'Średnia wartość wszystkich faktur: ' + CAST(@v_SredniaMin AS VARCHAR(20));
+
+    DECLARE sprzedawca_cursor CURSOR FOR
+    SELECT DISTINCT Sprzedawca_ID FROM Faktura;
+
+    OPEN sprzedawca_cursor;
+    FETCH NEXT FROM sprzedawca_cursor INTO @v_SprzedawcaID;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        SELECT @v_Srednia = AVG(Cena)
+        FROM Faktura
+        WHERE Sprzedawca_ID = @v_SprzedawcaID;
+
+        PRINT 'Średnia wartość faktur dla Sprzedawcy ' + CAST(@v_SprzedawcaID AS VARCHAR(10)) + ': ' + CAST(@v_Srednia AS VARCHAR(20));
+
+        FETCH NEXT FROM sprzedawca_cursor INTO @v_SprzedawcaID;
+    END
+
+    CLOSE sprzedawca_cursor;
+    DEALLOCATE sprzedawca_cursor;
+
+    SELECT TOP 1 @v_PodniesionoSprzedawcaID = Sprzedawca_ID
+    FROM Faktura
+    GROUP BY Sprzedawca_ID
+    ORDER BY AVG(Cena) DESC;
+
+    UPDATE Faktura
+    SET Cena = Cena * 1.05
+    WHERE Sprzedawca_ID = @v_PodniesionoSprzedawcaID;
+
+    PRINT 'Zwiększono wartość faktur dla Sprzedawcy ' + CAST(@v_PodniesionoSprzedawcaID AS VARCHAR(10)) + ' o 5%';
+
+    SELECT TOP 1 @v_ZmniejszonoSprzedawcaID = Sprzedawca_ID
+    FROM Faktura
+    GROUP BY Sprzedawca_ID
+    ORDER BY AVG(Cena);
+
+    UPDATE Faktura
+    SET Cena = Cena * 1.10
+    WHERE Sprzedawca_ID = @v_ZmniejszonoSprzedawcaID;
+
+    PRINT 'Zwiększono wartość faktur dla Sprzedawcy ' + CAST(@v_ZmniejszonoSprzedawcaID AS VARCHAR(10)) + ' o 10%';
+
+    DECLARE faktura_cursor CURSOR FOR
+    SELECT ID_Faktury
+    FROM Faktura
+    WHERE Cena <= @v_MinimalnaSuma * 1.20;
+
+    OPEN faktura_cursor;
+    FETCH NEXT FROM faktura_cursor INTO @v_PodniesionaFakturaID;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        PRINT 'ID_Faktury zwiększone o 20%: ' + CAST(@v_PodniesionaFakturaID AS VARCHAR(10));
+
+        FETCH NEXT FROM faktura_cursor INTO @v_PodniesionaFakturaID;
+    END
+
+    CLOSE faktura_cursor;
+    DEALLOCATE faktura_cursor;
+
+    UPDATE Faktura
+    SET Cena = Cena * 1.20
+    WHERE Sprzedawca_ID IS NOT NULL AND Cena <= @v_MinimalnaSuma * 1.20;
+
+END;
+
+Exec ModyfikujFaktury;
+
+SELECT AVG(Cena) FROM Faktura;
+
+SELECT Sprzedawca_ID, AVG(Cena) AS Srednia FROM Faktura
+GROUP BY Sprzedawca_ID;
+
+SELECT ID_Faktury, Cena, Sprzedawca_ID FROM Faktura
+WHERE Cena <=1000;
+
+SELECT * FROM Faktura;
+
+-- Procedura 7 * dodatkowa:
+-- przejrzyj wszystkich sprzedawców z tabeli sprzedawca
+-- wypisz średnią każdego z nich
+-- skasuj każdego z nich (i ich faktury), którzy mają średnią poniżej 5000.
+DECLARE
+    @v_SprzedawcaID INT,
+    @v_Srednia DECIMAL(18, 2);
+
+DECLARE sprzedawca_cursor CURSOR FOR
+    SELECT ID, Sprzedawca
+    FROM Sprzedawca;
+
+OPEN sprzedawca_cursor;
+
+FETCH NEXT FROM sprzedawca_cursor INTO @v_SprzedawcaID, @v_Srednia;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    SELECT @v_Srednia = AVG(Cena)
+    FROM Faktura
+    WHERE Sprzedawca_ID = @v_SprzedawcaID;
+
+    PRINT 'Średnia wartość faktur dla Sprzedawcy ' + CAST(@v_SprzedawcaID AS NVARCHAR(10)) + ' ' + CAST(@v_Srednia AS NVARCHAR(20));
+
+    IF @v_Srednia < 5000
+    BEGIN
+        DELETE FROM Faktura WHERE Sprzedawca_ID = @v_SprzedawcaID;
+        DELETE FROM Sprzedawca WHERE ID = @v_SprzedawcaID;
+
+        PRINT 'Usunięto Sprzedawcę ' + CAST(@v_SprzedawcaID AS NVARCHAR(10)) + ' i jego faktury ze względu na niską średnią.';
+    END;
+
+    FETCH NEXT FROM sprzedawca_cursor INTO @v_SprzedawcaID, @v_Srednia;
+END
+
+CLOSE sprzedawca_cursor;
+DEALLOCATE sprzedawca_cursor;
+
+
+SELECT Sprzedawca_ID, AVG(Cena) AS Srednia FROM Faktura
+GROUP BY Sprzedawca_ID;
+
+INSERT INTO Sprzedawca VALUES (4);
+INSERT INTO Faktura VALUES (1, 'do usuniecia', 100, 4);
+
+SELECT * FROM Sprzedawca;
+
+SELECT * FROM Faktura;
