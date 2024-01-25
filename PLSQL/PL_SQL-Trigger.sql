@@ -50,3 +50,28 @@ JOIN Pojazd P ON K.ID_KLIENTA = P.KLIENT_ID_KLIENTA
 WHERE ID_Klienta = 100;
 
 DELETE FROM Klient WHERE ID_Klienta = 100;
+
+-- Wyzwalacz 4 * dodatkowy:
+-- nie pozwoli usuwać napraw które mają Datę zakończenia naprawy
+-- nie pozwoli na zmianę ID_Naprawy oraz Daty zakończenia naprawy (jeżeli nie jest null)
+CREATE OR REPLACE TRIGGER SprawdzEdycjeNaprawy
+BEFORE DELETE OR UPDATE OF ID_Naprawy, Data_Zakonczenia_Naprawy ON Naprawa
+FOR EACH ROW
+BEGIN
+
+    IF :OLD.Data_Zakonczenia_Naprawy IS NOT NULL THEN
+        RAISE_APPLICATION_ERROR(-20002, 'Nie można usunąć ani modyfikować naprawy z ustawioną datą zakończenia.');
+    END IF;
+
+    IF :OLD.ID_Naprawy != :NEW.ID_Naprawy OR (:NEW.Data_Zakonczenia_Naprawy IS NOT NULL AND :OLD.Data_Zakonczenia_Naprawy != :NEW.Data_Zakonczenia_Naprawy) THEN
+        RAISE_APPLICATION_ERROR(-20002, 'Nie można zmieniać ID_Naprawy ani Daty zakończenia naprawy.');
+    END IF;
+END;
+
+DELETE FROM Naprawa WHERE ID_Naprawy = 1;
+
+UPDATE Naprawa SET ID_Naprawy = 1 WHERE ID_Naprawy = 9;
+
+SELECT * FROM Naprawa;
+
+UPDATE Naprawa SET Data_Zakonczenia_Naprawy = TO_DATE('2023-01-02', 'YYYY-MM-DD') WHERE ID_Naprawy = 1;
